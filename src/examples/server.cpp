@@ -17,6 +17,13 @@
 
 int	main()
 {
+
+#ifdef _WIN32
+  WSADATA wsa;
+  if (WSAStartup(MAKEWORD(2, 2), &wsa))
+    return 1;
+#endif
+
   int o;
   Socket::InputSocket<Socket::INETSocket, int> s;
 
@@ -26,5 +33,10 @@ int	main()
   s >> o;
   std::cout << o << std::endl;
   s.endServer();
+
+#ifdef _WIN32
+  WSACleanup();
+#endif
+
   return 0;
 }

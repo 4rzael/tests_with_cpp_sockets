@@ -10,18 +10,11 @@
 
 #include "INETSocket.hpp"
 
-#include <sys/un.h>
-#include <sys/socket.h>
-#include <sys/types.h>
-#include <sys/ioctl.h>
-#include <cstring>
-#include <unistd.h>
 #include <cstdio>
 #include <cerrno>
 #include <string>
 #include <iostream>
 #include <sstream>
-#include <arpa/inet.h>
 
 namespace Socket
 {
@@ -35,14 +28,14 @@ namespace Socket
   /* SERVER API */
   void	INETSocket::startServer(std::string const &address, int maxClients)
   {
-    struct sockaddr_in	addr;
+    SOCKADDR_IN	addr;
     std::stringstream	ss;
     int			port;
 
     try
       {
-	ss << address;
-	ss >> port;
+	    ss << address;
+	    ss >> port;
       }
     catch (...)
       {
@@ -81,7 +74,7 @@ namespace Socket
   void  INETSocket::closeConnection()
   {
     if (_client > 0)
-      close(_client);
+      closesocket(_client);
     _client = -1;
   }
 
@@ -90,9 +83,9 @@ namespace Socket
     if (_isServer)
       {
 	if (_client > 0)
-	  close(_client);
+	  closesocket(_client);
 	_client = -1;
-	close(_fd);
+	closesocket(_fd);
 	_isServer = false;
 	_fd = -1;
       }
@@ -101,7 +94,7 @@ namespace Socket
   /* CLIENT API */
   void  INETSocket::connect(std::string const &address)
   {
-    struct sockaddr_in addr;
+    SOCKADDR_IN addr;
     std::stringstream	ss;
     std::string		ip;
     int			port;
@@ -130,7 +123,7 @@ namespace Socket
 
   void  INETSocket::disconnect()
   {
-    close(_fd);
+    closesocket(_fd);
     _fd = -1;
   }
 
@@ -138,7 +131,11 @@ namespace Socket
 
   int	INETSocket::bytesAvailables() const
   {
-    size_t tmp = 0;
+#ifdef _WIN32
+      u_long tmp = 0;
+#else
+      size_t tmp = 0;
+#endif
 
     if (ioctl(_isServer ? _client : _fd, FIONREAD, &tmp) == -1)
       {
@@ -151,7 +148,7 @@ namespace Socket
   {
     int	tmp;
 
-    if ((tmp = ::recv(_isServer ? _client : _fd, buffer, size, 0)) == -1)
+    if ((tmp = ::recv(_isServer ? _client : _fd, (char *)buffer, size, 0)) == -1)
       {
 	throw SocketIOError(std::string(strerror(errno)));
       }
@@ -162,7 +159,7 @@ namespace Socket
   {
     int	tmp;
 
-    if ((tmp = ::send(_isServer ? _client : _fd, buffer, size, 0)) == -1)
+    if ((tmp = ::send(_isServer ? _client : _fd, (char *)buffer, size, 0)) == -1)
       {
 	throw SocketIOError(std::string(strerror(errno)));
       }

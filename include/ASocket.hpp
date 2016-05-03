@@ -47,9 +47,8 @@ namespace Socket
     virtual int		write(void const *buffer, std::size_t size) const = 0;
 
   protected:
-    bool		_isServer;
-    int			_fd;
-    int			_client;
+    bool		    _isServer;
+    int			    _client;
     std::string		_address;
   };
 };

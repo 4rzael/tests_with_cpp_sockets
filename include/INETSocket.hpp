@@ -13,6 +13,31 @@
 
 # include "ASocket.hpp"
 
+#ifdef _WIN32
+# include <winsock2.h>
+# define ioctl ioctlsocket
+
+#elif __linux__
+# include <sys/socket.h>
+# include <sys/types.h>
+# include <sys/ioctl.h>
+# include <cstring>
+# include <unistd.h>
+# include <arpa/inet.h>
+typedef int SOCKET;
+typedef sockaddr_in SOCKADDR_IN;
+typedef sockaddr SOCKADDR;
+typedef in_addr IN_ADDR;
+# define INVALID_SOCKET -1
+# define SOCKET_ERROR -1
+# define closesocket(s) close(s)
+
+#else
+# error OS not supported
+#endif
+
+
+
 namespace Socket
 {
   class INETSocket : public ASocket
@@ -38,9 +63,9 @@ namespace Socket
     virtual int		write(void const *buffer, std::size_t size) const;
     
   protected:
-    bool		_isServer;
-    int			_fd;
-    int			_client;
+    bool	    	_isServer;
+    SOCKET    		_fd;
+    int	  		    _client;
     std::string 	_address;
   };
 };
