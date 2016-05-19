@@ -1,13 +1,39 @@
 #include <errno.h>
 #include <algorithm>
-#include <sys/select.h>
+
+#ifndef _WIN32
+# include <sys/select.h>
+#endif
 
 #include <iostream>
+#include <fcntl.h>
+
 
 #include "Server.hpp"
 
 namespace Socket
 {
+	static inline int getError()
+	{
+#ifdef _WIN32
+        return WSAGetLastError();
+#else
+        return errno;
+#endif
+	}
+
+	static bool setNonBloccking(SOCKET sock)
+		{
+#ifdef _WIN32
+			u_long mode = 1;
+			if ((ioctlsocket(sock, FIONBIO, &mode)) == -1)
+				return false;
+#else
+			if ((fcntl(sock, F_SETFL, fcntl(sock, F_GETFL, 0) | O_NONBLOCK)) == -1)
+				return false;
+#endif
+        return true;
+	}
 
 	Server::Server()
 		{
@@ -16,6 +42,7 @@ namespace Socket
 			_OnDisconnect = NULL;
 			_OnReadPossible = NULL;
 			_OnWritePossible = NULL;
+			_OnStart = NULL;
 			_isRunning = false;
 			_timeout.tv_sec = 10;
 			_timeout.tv_usec = 0;
@@ -28,6 +55,7 @@ namespace Socket
 	void  Server::start(int port, size_t maxClients)
 	{
 		SOCKADDR_IN	addr;
+		PROTOENT	*proto;
 
 		// port checking
 		if (port <= 0 || port > 0xFFFF)
@@ -36,9 +64,15 @@ namespace Socket
 		_maxClients = maxClients;
 
 		// create socket
-		if ((_fd = socket(AF_INET, SOCK_STREAM | SOCK_NONBLOCK, 0)) == -1)
+		proto = getprotobyname("tcp");
+
+		if ((_fd = socket(AF_INET, SOCK_STREAM, proto ? proto->p_proto : 0)) == -1)
 		  throw SocketCreateError(std::string("server : ") +
-		  		std::string(strerror(errno)));
+		  		std::string(strerror(getError())));
+
+		if (!setNonBloccking(_fd))
+			throw SocketCreateError(std::string("server : ") +
+									std::string("cannot set non blocking mode for the server fd"));
 
 		// bind
 		memset(&addr, 0, sizeof(addr));
@@ -47,9 +81,9 @@ namespace Socket
 		addr.sin_port = htons(port);
 
 		if (bind(_fd, (sockaddr *)(&addr), sizeof(addr)) == -1)
-		  throw SocketConnectError("server : " + std::string(strerror(errno)));
+		  throw SocketConnectError("server : " + std::string(strerror(getError())));
 		if (listen(_fd, _maxClients) == -1)
-		  throw SocketConnectError("server : " + std::string(strerror(errno)));
+		  throw SocketConnectError("server : " + std::string(strerror(getError())));
 
 		// create select() sets
 		FD_ZERO(&_fd_set);
@@ -60,6 +94,10 @@ namespace Socket
 		_isRunning = true;
 		if (!_stateThread.joinable())
 			_stateThread = std::thread(&Server::stateChecker, this);
+
+		// start event
+		if (_OnStart)
+			_OnStart(*this, _port);
 	}
 
 	void  Server::stop()
@@ -102,8 +140,12 @@ namespace Socket
 		_OnWritePossible = callback;
 	}
 
+	void  Server::OnStart(std::function < void (Socket::Server &, int) > const &callback)
+	{
+		_OnStart = callback;
+	}
 
-	// TODO : re-set _max_fd
+
 	void  Server::disconnect(int fd)
 	{
 		auto found = std::find(_clients.begin(), _clients.end(), fd);
@@ -131,7 +173,7 @@ namespace Socket
 
 		if ((tmp = ::recv(fd, (char *)buffer, size, 0)) == -1)
 		{
-			throw SocketIOError(std::string(strerror(errno)));
+			throw SocketIOError(std::string(strerror(getError())));
 		}
 		if (size != 0 && tmp == 0)
 			disconnect(fd);
@@ -147,7 +189,7 @@ namespace Socket
 			if (errno == ECONNRESET)
 				disconnect(fd);
 			else
-				throw SocketIOError(std::string(strerror(errno)));
+				throw SocketIOError(std::string(strerror(getError())));
 		}
 		return tmp;
 	}
@@ -162,7 +204,7 @@ namespace Socket
 
 	    if (::ioctl(fd, FIONREAD, &bytes) == -1)
 	    {
-	    	throw SocketIOError(std::string(strerror(errno)));
+	    	throw SocketIOError(std::string(strerror(getError())));
 	    }
 	    return bytes;
 	}
@@ -182,13 +224,17 @@ namespace Socket
 			// wait for an event
 			nb_fd = select(_max_fd + 1, &read_set, &write_set, NULL, &_timeout);
 			if (nb_fd < 0 && errno != EINTR)
-				throw SocketIOError(std::string(strerror(errno)));
+				throw SocketIOError(std::string(strerror(getError())));
 
 			if (FD_ISSET(_fd, &read_set))
 			{
 				// connection event
-				while ((fd = ::accept4(_fd, NULL, NULL, SOCK_NONBLOCK)) != -1)
+				while ((fd = ::accept(_fd, NULL, NULL)) != -1)
 				{
+					if (!setNonBloccking(fd))
+						throw SocketCreateError(std::string("server : ") +
+												std::string("cannot set non blocking mode for the client fd"));
+
 					_clients.push_back(fd);
 					FD_SET(fd, &_fd_set);
 					_max_fd = (fd > _max_fd) ? fd : _max_fd;
@@ -200,7 +246,7 @@ namespace Socket
 						*/
 				}
 				if (errno != EAGAIN && errno != EWOULDBLOCK)
-					throw SocketConnectError(std::string(strerror(errno)));
+					throw SocketConnectError(std::string(strerror(getError())));
 			}
 
 			for (auto it = _clients.begin(); it != _clients.end(); ++it)

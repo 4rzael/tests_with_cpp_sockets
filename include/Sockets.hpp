@@ -30,6 +30,7 @@ typedef int SOCKET;
 typedef sockaddr_in SOCKADDR_IN;
 typedef sockaddr SOCKADDR;
 typedef in_addr IN_ADDR;
+typedef protoent PROTOENT;
 # define INVALID_SOCKET -1
 # define SOCKET_ERROR -1
 # define closesocket(s) close(s)

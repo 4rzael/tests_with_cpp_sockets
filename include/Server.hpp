@@ -53,6 +53,10 @@ namespace Socket
     // called on client write accessibility
     // param1 : Int : fd of the client socket
     void  OnWritePossible(std::function < void (Server &, int) > const &callback);
+    // called on server startup
+    // param1 : Int : Port of the connexion
+    void  OnStart(std::function < void (Server &, int) > const &callback);
+
 
     /* I/O API */
     void    disconnect(int fd);
@@ -72,6 +76,7 @@ namespace Socket
     std::function < void (Server &, int) >          _OnDisconnect;
     std::function < void (Server &, int, size_t) >  _OnReadPossible;
     std::function < void (Server &, int) >          _OnWritePossible;
+    std::function < void (Server &, int) >               _OnStart;
 
   private:
     void  stateChecker();
