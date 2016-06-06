@@ -200,7 +200,7 @@ namespace Socket
 	    u_long bytes = 0;
 #else
 	    size_t bytes = 0;
-#endif	
+#endif
 
 	    if (::ioctl(fd, FIONREAD, &bytes) == -1)
 	    {
@@ -214,15 +214,18 @@ namespace Socket
 		int fd;
 		int nb_fd;
 		fd_set read_set, write_set;
+		timeval timeout;
 
 		// event loop
 		while (_isRunning)
 		{
-			memcpy(&read_set, &_fd_set, sizeof(_fd_set));
-			memcpy(&write_set, &_fd_set, sizeof(_fd_set));
+		  SLEEPMS(0);
+		  memcpy(&read_set, &_fd_set, sizeof(_fd_set));
+		  memcpy(&write_set, &_fd_set, sizeof(_fd_set));
 
 			// wait for an event
-			nb_fd = select(_max_fd + 1, &read_set, &write_set, NULL, &_timeout);
+			timeout = _timeout;
+			nb_fd = select(_max_fd + 1, &read_set, &write_set, NULL, &timeout);
 			if (nb_fd < 0 && errno != EINTR)
 				throw SocketIOError(std::string(strerror(getError())));
 
@@ -240,27 +243,28 @@ namespace Socket
 					_max_fd = (fd > _max_fd) ? fd : _max_fd;
 					if (_OnConnect)
 						_OnConnect(*this, fd);
-					/*
-					else
-						std::cout << "no callback set for OnConnect" << std::endl;
-						*/
 				}
 				if (errno != EAGAIN && errno != EWOULDBLOCK)
 					throw SocketConnectError(std::string(strerror(getError())));
 			}
 
-			for (auto it = _clients.begin(); it != _clients.end(); ++it)
+			for (auto it = _clients.begin(); it != _clients.end() && _clients.size(); ++it)
 			{
 				// read event
 				if (FD_ISSET(*it, &read_set))
 				{
-					if (*it == _fd);
-					else if (_OnReadPossible)
-						_OnReadPossible(*this, *it, bytesAvailables(*it));
-					/*
-					else
-						std::cout << "no callback set for OnReadPossible" << std::endl;
-						*/
+				  if (*it == _fd);
+				  else
+				    {
+				      if (!bytesAvailables(*it))
+					{
+					  disconnect(*it);
+					  it = _clients.begin();
+					  continue;
+					}
+				      else if (_OnReadPossible)
+					_OnReadPossible(*this, *it, bytesAvailables(*it));
+				    }
 				}
 				// write event
 				if (FD_ISSET(*it, &write_set))

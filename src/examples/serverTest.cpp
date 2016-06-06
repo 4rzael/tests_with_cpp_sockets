@@ -19,7 +19,7 @@ void onread(Socket::Server &s, int fd, int size)
 
 	memset(buffer, 0, size + 1);
 	s.read(fd, buffer, size);
-	std::cout << "read possible : " << fd << " " << size << " bytes" << std::endl;
+	std::cout << "read possible : " << fd << " " << size << " bytes : " << buffer << std::endl;
 }
 
 void onstart(Socket::Server &s, int port)
